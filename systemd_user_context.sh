@@ -5,8 +5,8 @@
 # Mainly the issue is that a desktop session needs a dedicated dbus,
 # but systemd creates a single one for every logged on user.
 #
-# Using systemd-run it is possible to create a separate systemd-user instance
-# with dedicated XDG_RUNTIME_DIR and DBUS
+# Using systemd-run or a systemd user unit file it is possible to create 
+# a separate systemd-user instance with dedicated XDG_RUNTIME_DIR and DBUS
 #
 # Main ideas in this script by mwsys.mine.bz
 
@@ -18,14 +18,77 @@
 # in fd 3 and redirect our fd 1 to stderr to talk to the user
 exec 3>&1 >&2
 
+# prepare user environment
+prepare_user_environment()
+{
+    test -f $XDG_RUNTIME_DIR/systemd/user.control/xrdp-display@.service && return
+    install -dm 0700 $XDG_RUNTIME_DIR/systemd/user.control
+    # Create a unit to wait for the target pid to finish
+    {
+        echo "[Unit]"
+        echo "Description=Wait for XRDP session %i to finish"
+        echo "Requires=xrdp-display@%i.service"
+        echo
+        echo "[Service]"
+        echo "Type=simple"
+        echo "ExecStart=/bin/sh -c 'XRDP_STARTWM_PID=\$(cat %t/xrdp-display@%i/startwm.pid); while /bin/kill -0 \$XRDP_STARTWM_PID 2>/dev/null; do sleep 5; done'"
+        echo "ExecStopPost=/usr/bin/systemctl --user stop xrdp-display@%i.service"
+        echo "ExecStopPost=rm -r %t/xrdp-display@%i"
+    } >$XDG_RUNTIME_DIR/systemd/user.control/wait-for-xrdp-display@.service
+
+    #Create the systemd-user session unit file
+    {
+        echo "[Unit]"
+        echo "Description=XRDP systemd User Manager for display %i"
+        echo
+        echo "[Service]"
+        echo "Type=notify"
+        echo "ExecStart=sh %t/systemd_user_session.sh xrdp-display@%i"
+    } > $XDG_RUNTIME_DIR/systemd/user.control/xrdp-display@.service
+    
+    #create the systemd --user wrapper to launch systemd with a clean environment
+    echo '#/bin/sh
+test -z XDG_RUNTIME_DIR && exit 1
+test "$1" = "" && exit 1
+
+SESSION_RUNTIME_DIR="$XDG_RUNTIME_DIR/$1"
+install -dm 0700 "$SESSION_RUNTIME_DIR"
+oIFS="$IFS"
+IFS="
+"
+
+for ev in `env`; do
+    evn=${ev%%=*}
+    [ "$evn" != "HOME" -a \
+      "$evn" != "SHELL" -a \
+      "$evn" != "LANG" -a \
+      "$evn" != "PATH" -a \
+      "$evn" != "SYSTEMD_EXEC_PID" -a \
+      "$evn" != "INVOCATION_ID" -a \
+      "$evn" != "NOTIFY_SOCKET" -a \
+      "$evn" != "MANAGERPID" ] \
+    && unset $evn;
+done
+
+IFS="$oIFS"
+
+XDG_RUNTIME_DIR="$SESSION_RUNTIME_DIR"
+
+export XDG_RUNTIME_DIR
+
+exec /lib/systemd/systemd --user
+' > $XDG_RUNTIME_DIR/systemd_user_session.sh
+    systemctl --user daemon-reload
+}
+
 # -----------------------------------------------------------------------------
 get_unit_name()
 {
     if [ -z "$DISPLAY" ]; then
         echo "** Warning - no DISPLAY. Assuming test mode" >&2
-        unit_name=xrdp-display-test
+        unit_name=xrdp-display@test
     else
-        unit_name=xrdp-display-${DISPLAY##*:} ; # e.g. xrdp-display-10.0
+        unit_name=xrdp-display@${DISPLAY##*:} ; # e.g. xrdp-display-10.0
         unit_name=${unit_name%.*} ; # e.g. xrdp-display-10
     fi
 }
@@ -78,29 +141,14 @@ cmd_init()
             done
         fi
 
-        # Create a unit to wait for the target pid to finish
-        {
-            echo "[Unit]"
-            echo "Description=Wait for XRDP session to finish"
-            echo "Requires=default.target"
-            echo
-            echo "[Service]"
-            echo "Type=simple"
-            echo "ExecStart=/bin/sh -c 'while /bin/kill -0 $target_pid; do sleep 5; done'"
-            echo "ExecStopPost=/usr/bin/systemctl --user exit"
-        } >$session_runtime_dir/systemd/user.control/wait-for-xrdp-session.service
+        prepare_user_environment ;
 
-        # start systemd service. this must be done using systemd-run to get a
-        # proper scope. This mimics user@.service
-        #
-        # Within the system --user process we run wait-for-xrdp-session.service.
-        # That kills the systemd --user instance when the target process
-        # finishes.
-        systemd-run --user -u $unit_name \
-            -E "XDG_RUNTIME_DIR=$session_runtime_dir" \
-            -E "DBUS_SESSION_BUS_ADDRESS=unix:path=$session_runtime_dir/bus" \
-            systemd --user --unit wait-for-xrdp-session.service
-
+        #pass pid to monitor to wait-for- unit
+        echo $target_pid > $session_runtime_dir/startwm.pid
+        
+        # this will pull also start xrdp-display@
+        systemctl --user start wait-for-$unit_name
+        
         # Use the 'get' command to display the results. We don't need
         # the command to generate any warnings
         cmd_get >/dev/null 2>&1
