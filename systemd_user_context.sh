@@ -159,6 +159,12 @@ cmd_init()
         # this will also start systemd-session@
         systemctl --user start wait-for-"$unit_name"
         
+        # wait for dbus to be up
+        while ! dbus-send "--bus=unix:path=$session_runtime_dir/bus" --dest=org.freedesktop.DBus \
+            /org/freedesktop/DBus org.freedesktop.DBus.Hello; do
+            sleep 0.5
+        done
+        
         # Use the 'get' command to display the results. We don't need
         # the command to generate any warnings
         cmd_get >/dev/null 2>&1
