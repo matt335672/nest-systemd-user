@@ -34,7 +34,8 @@ prepare_user_environment()
         echo "Type=simple"
         echo "ExecStart=/bin/sh -c 'XRDP_STARTWM_PID=\$(cat %t/systemd-session-%i/wait-for.pid); while /bin/kill -0 \$XRDP_STARTWM_PID 2>/dev/null; do sleep 5; done'"
         echo "ExecStopPost=/usr/bin/systemctl --user stop systemd-session@%i.service"
-        echo "ExecStopPost=rm -r %t/systemd-session-%i"
+        # optional: remove XDG_RUNTIME_DIR. There could be issues with unmounting $XDG_RUNTIME_DIR/doc
+        # echo "ExecStopPost=rm -r %t/systemd-session-%i"
     } >$XDG_RUNTIME_DIR/systemd/user.control/wait-for-systemd-session@.service
 
     #Create the systemd-user session unit file.
@@ -48,9 +49,9 @@ prepare_user_environment()
     } > $XDG_RUNTIME_DIR/systemd/user.control/systemd-session@.service
     
     #create the systemd --user wrapper to launch systemd with a clean environment
-    echo '#/bin/sh
-test -z $XDG_RUNTIME_DIR && exit 1
-test -z $1 && exit 1
+    echo '#!/bin/sh
+test -z "$XDG_RUNTIME_DIR" && exit 1
+test -z "$1" && exit 1
 
 SESSION_RUNTIME_DIR="$XDG_RUNTIME_DIR/$1"
 install -dm 0700 "$SESSION_RUNTIME_DIR"
@@ -61,14 +62,14 @@ IFS="
 # keep only absolutly needed environment variables
 for ev in `env`; do
     evn=${ev%%=*}
-    [ "$evn" != "HOME" -a \
-      "$evn" != "SHELL" -a \
-      "$evn" != "LANG" -a \
-      "$evn" != "PATH" -a \
-      "$evn" != "SYSTEMD_EXEC_PID" -a \
-      "$evn" != "INVOCATION_ID" -a \
-      "$evn" != "NOTIFY_SOCKET" -a \
-      "$evn" != "MANAGERPID" ] \
+    [ $evn != "HOME" -a \
+      $evn != "SHELL" -a \
+      $evn != "LANG" -a \
+      $evn != "PATH" -a \
+      $evn != "SYSTEMD_EXEC_PID" -a \
+      $evn != "INVOCATION_ID" -a \
+      $evn != "NOTIFY_SOCKET" -a \
+      $evn != "MANAGERPID" ] \
     && unset $evn;
 done
 
@@ -147,7 +148,7 @@ cmd_init()
             done
         fi
 
-        prepare_user_environment ;
+        prepare_user_environment
 
         #pass pid to monitor to wait-for- unit
         echo $target_pid > $session_runtime_dir/wait-for.pid
@@ -170,14 +171,14 @@ cmd_status()
 
 cmd_prepare()
 {
-    prepare_user_environment ;
+    prepare_user_environment
 }
 
 # -----------------------------------------------------------------------------
 cmd_help()
 {
     cat <<EOF
-Usage: $0 [ init | get | help ]
+Usage: $0 [ init | get | prepare | help ]
 
     init -p <pid>
             Sets up a new systemd --user instance for this DISPLAY.
