@@ -10,10 +10,21 @@ on:
 jobs:
   Run-shellcheck:
     runs-on: ubuntu-latest
+    env:
+      # Setting XDG_RUNTIME_DIR to '.' causes the 'prepare'
+      # sub-command to generate files (including any scripts)
+      # in the current directory
+      XDG_RUNTIME_DIR: "."
     steps:
       - name: Install shellcheck
         run: sudo apt-get -y install shellcheck
       - name: Check out repository
         uses: actions/checkout@v3
-      - name: Run shellcheck
-        run: shellcheck *.sh
+      - name: Run shellcheck on main script
+        run: shellcheck systemd_user_context.sh
+      - name: Generate systemd_user_session.sh file
+        # This command will fail (no D-Bus present), so make
+        # sure the runner job continues
+        run: ./systemd_user_context.sh prepare || true
+      - name: Run shellcheck on systemd_user_session.sh file
+        run: shellcheck systemd_user_session.sh
