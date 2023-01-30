@@ -60,18 +60,20 @@ oIFS="$IFS"
 IFS="
 "
 
-# keep only absolutly needed environment variables
-for ev in `env`; do
-    evn=${ev%%=*}
-    [ $evn != "HOME" -a \
-      $evn != "SHELL" -a \
-      $evn != "LANG" -a \
-      $evn != "PATH" -a \
-      $evn != "SYSTEMD_EXEC_PID" -a \
-      $evn != "INVOCATION_ID" -a \
-      $evn != "NOTIFY_SOCKET" -a \
-      $evn != "MANAGERPID" ] \
-    && unset $evn;
+# keep only absolutely needed environment variables
+for ev in $(env); do
+    evn="${ev%%=*}"
+    case "$evn" in
+        HOME) ;;
+        SHELL) ;;
+        LANG) ;;
+        PATH) ;;
+        SYSTEMD_EXEC_PID) ;;
+        INVOCATION_ID) ;;
+        NOTIFY_SOCKET) ;;
+        MANAGERPID) ;;
+        *) unset "$evn"
+    esac
 done
 
 IFS="$oIFS"
