@@ -21,8 +21,8 @@ exec 3>&1 >&2
 # prepare user environment
 prepare_user_environment()
 {
-    test -f $XDG_RUNTIME_DIR/systemd/user.control/systemd-session@.service && return
-    install -dm 0700 $XDG_RUNTIME_DIR/systemd/user.control
+    test -f "$XDG_RUNTIME_DIR"/systemd/user.control/systemd-session@.service && return
+    install -dm 0700 "$XDG_RUNTIME_DIR"/systemd/user.control
     # Create a unit to wait for the target pid to finish
     {
         echo "[Unit]"
@@ -36,7 +36,7 @@ prepare_user_environment()
         echo "ExecStopPost=/usr/bin/systemctl --user stop systemd-session@%i.service"
         # optional: remove XDG_RUNTIME_DIR. There could be issues with unmounting $XDG_RUNTIME_DIR/doc
         # echo "ExecStopPost=rm -r %t/systemd-session-%i"
-    } >$XDG_RUNTIME_DIR/systemd/user.control/wait-for-systemd-session@.service
+    } >"$XDG_RUNTIME_DIR"/systemd/user.control/wait-for-systemd-session@.service
 
     #Create the systemd-user session unit file.
     {
@@ -46,9 +46,10 @@ prepare_user_environment()
         echo "[Service]"
         echo "Type=notify"
         echo "ExecStart=sh %t/systemd_user_session.sh systemd-session-%i"
-    } > $XDG_RUNTIME_DIR/systemd/user.control/systemd-session@.service
+    } > "$XDG_RUNTIME_DIR"/systemd/user.control/systemd-session@.service
     
     #create the systemd --user wrapper to launch systemd with a clean environment
+    #shellcheck disable=SC2016
     echo '#!/bin/sh
 test -z "$XDG_RUNTIME_DIR" && exit 1
 test -z "$1" && exit 1
@@ -80,7 +81,7 @@ XDG_RUNTIME_DIR="$SESSION_RUNTIME_DIR"
 export XDG_RUNTIME_DIR
 
 exec /lib/systemd/systemd --user
-' > $XDG_RUNTIME_DIR/systemd_user_session.sh
+' > "$XDG_RUNTIME_DIR"/systemd_user_session.sh
     systemctl --user daemon-reload
 }
 
@@ -89,7 +90,7 @@ get_unit_name()
 {
     if [ -z "$XDG_RUNTIME_DIR" ]; then
         echo "** Warning - no $XDG_RUNTIME_DIR. Using systemd default" >&2
-        XDG_RUNTIME_DIR=/run/user/`id -u`
+        XDG_RUNTIME_DIR=/run/user/$(id -u)
     fi
     if [ -z "$DISPLAY" ]; then
         echo "** Warning - no DISPLAY. Assuming test mode" >&2
@@ -111,7 +112,7 @@ get_session_runtime_dir()
 cmd_get()
 {
     get_unit_name  ; # Output in 'unit_name'
-    get_session_runtime_dir $unit_name ; # Output in 'session_runtime_dir'
+    get_session_runtime_dir "$unit_name" ; # Output in 'session_runtime_dir'
 
     # Send the required commands to the saved file descriptor
     {
@@ -124,7 +125,7 @@ cmd_get()
 # -----------------------------------------------------------------------------
 cmd_init()
 {
-    if [ $# != 2 -a "$1" != -p ]; then
+    if [ $# != 2 ] && [ "$1" != -p ]; then
         echo "** Need to specify a PID to monitor"
         false
     elif ! kill -0 "$2" >/dev/null 2>&1 ; then
@@ -133,28 +134,28 @@ cmd_init()
     else
         target_pid="$2"
         get_unit_name  ; # Output in 'unit_name'
-        get_session_runtime_dir $unit_name ; # Output in 'session_runtime_dir'
+        get_session_runtime_dir "$unit_name" ; # Output in 'session_runtime_dir'
 
         # Be aware the session runtime directory may still be around
         # from last time
-        install -dm 0700 $session_runtime_dir
-        rm -rf $session_runtime_dir/systemd/user.control/
-        mkdir -p $session_runtime_dir/systemd/user.control/
+        install -dm 0700 "$session_runtime_dir"
+        rm -rf "$session_runtime_dir"/systemd/user.control/
+        mkdir -p "$session_runtime_dir"/systemd/user.control/
 
         if [ -n "$UNITS_TO_MASK" ]; then
             for unit in $UNITS_TO_MASK; do
                 ln -s /dev/null \
-                    $session_runtime_dir/systemd/user.control/$unit
+                    "$session_runtime_dir"/systemd/user.control/"$unit"
             done
         fi
 
         prepare_user_environment
 
         #pass pid to monitor to wait-for- unit
-        echo $target_pid > $session_runtime_dir/wait-for.pid
+        echo "$target_pid" > "$session_runtime_dir"/wait-for.pid
         
         # this will also start systemd-session@
-        systemctl --user start wait-for-$unit_name
+        systemctl --user start wait-for-"$unit_name"
         
         # Use the 'get' command to display the results. We don't need
         # the command to generate any warnings
@@ -166,7 +167,7 @@ cmd_init()
 cmd_status()
 {
     get_unit_name  ; # Output in 'unit_name'
-    systemctl --user status $unit_name >&3
+    systemctl --user status "$unit_name" >&3
 }
 
 cmd_prepare()
