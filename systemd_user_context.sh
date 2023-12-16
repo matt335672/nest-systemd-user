@@ -32,7 +32,7 @@ prepare_user_environment()
         echo
         echo "[Service]"
         echo "Type=simple"
-        echo "ExecStart=/bin/sh -c 'XRDP_STARTWM_PID=\$(cat %t/systemd-session-%i/wait-for.pid); while /bin/kill -0 \$XRDP_STARTWM_PID 2>/dev/null; do sleep 5; done'"
+        echo "ExecStart=/bin/sh -c 'XRDP_STARTWM_PID=\$(cat %t/systemd-session-%i/wait-for.pid); while /bin/kill -0 \$XRDP_STARTWM_PID 2>/dev/null; do sleep 5; done; rm %t/systemd-session-%i/wait-for.pid'"
         echo "ExecStopPost=/usr/bin/systemctl --user stop systemd-session@%i.service"
         # optional: remove XDG_RUNTIME_DIR. There could be issues with unmounting $XDG_RUNTIME_DIR/doc
         # echo "ExecStopPost=rm -r %t/systemd-session-%i"
@@ -116,6 +116,7 @@ cmd_get()
     get_unit_name  ; # Output in 'unit_name'
     get_session_runtime_dir "$unit_name" ; # Output in 'session_runtime_dir'
 
+    test -e "$session_runtime_dir/wait-for.pid" || return
     # Send the required commands to the saved file descriptor
     {
         echo "XDG_RUNTIME_DIR=\"$session_runtime_dir\"" >&3
@@ -200,7 +201,8 @@ Usage: $0 [ init | get | prepare | help ]
     get     Used after 'init' to find the existing private systemd --user
             instance for this DISPLAY.
             Outputs the shell commands needed to communicate with this
-            instance.
+            instance. If the instance is not running or already terminated
+            this command does nothing
 
     status  Displays the status of any private systemd --user
             instance for this DISPLAY.

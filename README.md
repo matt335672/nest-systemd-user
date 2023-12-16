@@ -21,3 +21,40 @@ This repository contains a tool which can be retro-fitted to xrdp v0.9.x
 installations.
 
 At the moment this is an alpha-quality tool. Feedback and issuea are welcome.
+
+# how to use this tool in conjunction with xrdp
+To use this tool with xrdp the script startwm.sh should be adapted
+
+First you should place `systemd_user_context.sh` in `/etc/xrdp/`
+
+The next step is putting this somewhere near the top of `startwm.sh`.
+It can be anywhere in the script as long as it is before the Xsession call
+
+```bash
+# On systemd system?
+#
+# If so, start a private "systemd --user" instance
+if [ -x /usr/bin/systemctl -a "$XDG_RUNTIME_DIR" = "/run/user/"`id -u` ]
+then
+    eval "`${0%/*}/systemd_user_context.sh init -p $$`"
+
+    # may be used by reconnect.sh to find the matching logind session
+    if [ -n "$XDG_SESSION_ID" ]; then
+        echo $XDG_SESSION_ID > $XDG_RUNTIME_DIR/login-session-id
+    fi
+fi
+```
+
+If you also want to unlock your xrdp screen when you reconnect to your session
+preventing to type you password twice you might put something like this in `reconnectwh.sh`
+
+```bash
+# xrdp-sesman knows nothing about the nested session, so try to guess
+# XDG_RUNTIME_DIR
+[ -z "$XDG_RUNTIME_DIR" -a -e /run/user/$(id -u) ] && XDG_RUNTIME_DIR=/run/user/$(id -u)
+
+eval "`${0%/*}/systemd_user_context.sh get`"
+
+test -e $XDG_RUNTIME_DIR/login-session-id && \
+        loginctl unlock-session $(cat $XDG_RUNTIME_DIR/login-session-id)
+```
