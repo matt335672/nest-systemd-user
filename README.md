@@ -25,7 +25,10 @@ At the moment this is an alpha-quality tool. Feedback and issuea are welcome.
 # how to use this tool in conjunction with xrdp
 To use this tool with xrdp the script startwm.sh should be adapted
 
-First you should place `systemd_user_context.sh` in `/etc/xrdp/`
+First you should place `systemd_user_context.sh` in the same directory as
+`startwm.sh`:-
+- On Fedora or EPEL-based systems, `startwm.sh` is in `/usr/libexec/xrdp/`
+- On all other systems `startwm.sh` is (probably) in `/etc/xrdp`.
 
 The next step is putting this somewhere near the top of `startwm.sh`.
 It can be anywhere in the script as long as it is before the Xsession call
